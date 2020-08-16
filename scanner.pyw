@@ -5,38 +5,29 @@ import glob
 import time
 import shutil
 import pytesseract
+import multiprocessing
 from pdf2image import convert_from_path
-import logging
-logging.basicConfig(
-    filename='pdf_scanner_log.txt',
-    level=logging.DEBUG,
-    format='%(asctime)s %(message)s',
-    datefmt='[%m/%d/%Y %I:%M:%S %p]')
-
 
 # Check Command Line options
 if len(sys.argv) == 3:
     search_path = sys.argv[1]
     prefix = sys.argv[2]
 else:
-    logging.error("Invalid number of parameters, 2 required")
-    logging.error("Params: ")
-    logging.error(sys.argv)
+    print("Invalid number of parameters, 2 required")
+    print("Params: ")
+    print(sys.argv)
     sys.exit(1)
-
-# Prevent multiple copies from running
-try:
-    lock_file = os.open(prefix + ".lock", os.O_CREAT | os.O_EXCL | os.O_TEMPORARY)
-    logging.info("---- Processing Started ----")
-except:
-    logging.error("Aborted: Can only run one instance of this script")
-    sys.exit(0)
 
 # Regex for various tests
 find_invoice = re.compile(r"(?!4)\d{6}", re.MULTILINE)
-ignore_processed = re.compile(prefix + "_")
+ignore_processed = re.compile(prefix + "_|Error_")
 
-monitor_file_count = len(glob.glob(os.path.join(search_path,"*.pdf")))
+import logging
+logging.basicConfig(
+    filename='pdf_scanner_log_' + prefix + '.txt',
+    level=logging.DEBUG,
+    format='%(asctime)s %(message)s',
+    datefmt='[%m/%d/%Y %I:%M:%S %p]')
 
 
 def monitor_for_changes():
@@ -64,6 +55,23 @@ def monitor_for_changes():
     return change
 
 
+def read_pdf_to_img_on_queue(PDF_file, outputQueue: multiprocessing.Queue):
+    """
+    Reads a PDF specified by PDF_File and pushes the resulting image data onto the output queue
+    :param PDF_file:string Full path and filename of file to process
+    :param outputQueue:multiprocessing.Queue Queue to hold returned image data
+    """
+    # Ignore processing errors
+    try:
+        # More about suppressing Console:
+        # https://stackoverflow.com/questions/52011902/python-pdf2image-hide-consoles
+        img = convert_from_path(PDF_file, 500)[0]
+        outputQueue.put(img)
+    except:
+        logging.info("Error Reading " + PDF_file)
+        pass
+
+
 def process_files():
     for PDF_file in glob.glob(os.path.join(search_path,"*.pdf")):
         check_file = ignore_processed.search(PDF_file)
@@ -73,14 +81,28 @@ def process_files():
 
         logging.info("Processing: " + PDF_file)
 
-        # Ignore processing errors
-        try:
-            # More about suppressing Console:
-            # https://stackoverflow.com/questions/52011902/python-pdf2image-hide-consoles
-            img = convert_from_path(PDF_file, 500)[0]
-        except:
-            logging.info("Error Reading " + PDF_file)
+        # Start the conversion as a process
+        outputQueue = multiprocessing.Queue()
+        process = multiprocessing.Process(target=read_pdf_to_img_on_queue, args=(PDF_file, outputQueue))
+        process.start()
+
+        # Wait up to 20 seconds to finish
+        start_time = time.time()
+        while outputQueue.empty() and (time.time() - start_time < 20):
+            delta = time.time() - start_time
+            time.sleep(1)
+
+        # If the queue is empty then we've timed out or errored out
+        if outputQueue.empty():
+            # Kill the process
+            process.terminate()
+            bad_filename = os.path.join(search_path, "Error_" + os.path.basename(PDF_file))
+            logging.info("Timeout File: " + bad_filename)
+            print(bad_filename)
+            shutil.move(PDF_file, bad_filename)
             continue
+        else:
+            img = outputQueue.get()
 
         # Left, Top, Right, Bottom
         size = (
@@ -115,9 +137,20 @@ def process_files():
             shutil.move(PDF_file,bad_filename)
 
 
-monitor_for_changes()
-process_files()
-while monitor_for_changes():
-    process_files()
+if __name__ == '__main__':
+    # Prevent multiple copies from running
+    try:
+        lock_file = os.open(prefix + ".lock", os.O_CREAT | os.O_EXCL | os.O_TEMPORARY)
+        logging.info("---- Processing Started ----")
+    except:
+        # logging.error("Aborted: Can only run one instance of this script")
+        sys.exit(0)
 
-logging.info("---- Processing Complete ----")
+    monitor_file_count = len(glob.glob(os.path.join(search_path, "*.pdf")))
+
+    monitor_for_changes()
+    process_files()
+    while monitor_for_changes():
+        process_files()
+
+    logging.info("---- Processing Complete ----")
