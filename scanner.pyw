@@ -65,7 +65,7 @@ def read_pdf_to_img_on_queue(PDF_file, outputQueue: multiprocessing.Queue):
     try:
         # More about suppressing Console:
         # https://stackoverflow.com/questions/52011902/python-pdf2image-hide-consoles
-        img = convert_from_path(PDF_file, 500)[0]
+        img = convert_from_path(PDF_file, 500, last_page=1)[0]
         outputQueue.put(img)
     except:
         logging.info("Error Reading " + PDF_file)
