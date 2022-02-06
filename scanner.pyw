@@ -31,17 +31,18 @@ ignore_processed = re.compile(prefix + "_|Error_")
 invoice_filename_test = re.compile(r"^\d{5,}")
 date_test = re.compile(r"\d+/\d+/\d+")
 
-
 logging.basicConfig(
     filename='pdf_scanner_log_' + prefix + '.txt',
     level=logging.DEBUG,
     format='%(asctime)s %(message)s',
     datefmt='[%m/%d/%Y %I:%M:%S %p]')
 
+
 # From https://stackoverflow.com/a/65634189/1420506
 def convert_from_cv2_to_image(img: np.ndarray) -> Image:
     # return Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     return Image.fromarray(img)
+
 
 # From https://stackoverflow.com/a/65634189/1420506
 def convert_from_image_to_cv2(img: Image) -> np.ndarray:
@@ -73,7 +74,7 @@ def monitor_for_changes():
     change = False
     while countdown > 0:
         time.sleep(1)
-        new_count = len(glob.glob(os.path.join(search_path,"*.pdf")))
+        new_count = len(glob.glob(os.path.join(search_path, "*.pdf")))
         if monitor_file_count != new_count:
             logging.info("Change Detected, Old: %d New: %d" % (monitor_file_count, new_count))
             countdown = 4
@@ -104,7 +105,7 @@ def read_pdf_to_img_on_queue(PDF_file, outputQueue: multiprocessing.Queue):
 
 
 def process_files():
-    for PDF_file in glob.glob(os.path.join(search_path,"*.pdf")):
+    for PDF_file in glob.glob(os.path.join(search_path, "*.pdf")):
         check_file = ignore_processed.search(PDF_file)
         if check_file:
             logging.info("Skip File: " + PDF_file)
@@ -159,7 +160,8 @@ def process_files():
                 result = find_invoice.search(text)
 
                 if result:
-                    new_filename = os.path.join(search_path, prefix + "_" + result[0] + "_from_"+ os.path.basename(PDF_file))
+                    new_filename = os.path.join(search_path,
+                                                prefix + "_" + result[0] + "_from_" + os.path.basename(PDF_file))
                     logging.info("New File: " + new_filename)
                     # crop_data.save(new_filename + ".jpg", "JPEG")
                     shutil.move(PDF_file, new_filename)
@@ -168,7 +170,7 @@ def process_files():
                     logging.info("Bad File: " + bad_filename)
                     logging.info("Found Text: '%s'" % text)
                     # crop_data.save(bad_filename + ".jpg", "JPEG")
-                    shutil.move(PDF_file,bad_filename)
+                    shutil.move(PDF_file, bad_filename)
             else:
                 # ---------------------------- Timesheet Parse ------------------------
 
@@ -176,9 +178,9 @@ def process_files():
                 # Left, Top, Right, Bottom
                 invoice_size = (
                     int(img.width * 0.5 / 11),
-                    int(img.height * (1 + 3/8) / 8.5),
+                    int(img.height * (1 + 3 / 8) / 8.5),
                     int(img.width * 1.5 / 11),
-                    int(img.height * (1 + 3/4) / 8.5)
+                    int(img.height * (1 + 3 / 4) / 8.5)
                 )
                 invoice_crop_data = img.crop(invoice_size)
 
@@ -199,10 +201,10 @@ def process_files():
                 # Date
                 # Left, Top, Right, Bottom
                 date_size = (
-                    int(img.width * (1 + 5/8) / 11),
-                    int(img.height * (1 + 3/8) / 8.5),
-                    int(img.width * (2 + 7/8) / 11),
-                    int(img.height * (1 + 3/4) / 8.5)
+                    int(img.width * (1 + 5 / 8) / 11),
+                    int(img.height * (1 + 3 / 8) / 8.5),
+                    int(img.width * (2 + 7 / 8) / 11),
+                    int(img.height * (1 + 3 / 4) / 8.5)
                 )
                 date_crop_data = img.crop(date_size)
 
@@ -229,7 +231,7 @@ def process_files():
                 if invoice:
                     new_filename = os.path.join(search_path,
                                                 "{0}_{1}_{2}_from_{3}".format(prefix, invoice[0], invoice_date,
-                                                                           os.path.basename(PDF_file)))
+                                                                              os.path.basename(PDF_file)))
                     logging.info("New File: " + new_filename)
                     if debug:
                         invoice_crop_data.save(new_filename + "_invoice.jpg", "JPEG")
@@ -237,7 +239,9 @@ def process_files():
 
                     shutil.move(PDF_file, new_filename)
                 else:
-                    bad_filename = os.path.join(search_path, prefix + "_Unknown_from_" + os.path.basename(PDF_file))
+                    bad_filename = os.path.join(search_path,
+                                                "{0}_Unknown_{1}_from_{2}".format(prefix, invoice_date,
+                                                                                  os.path.basename(PDF_file)))
                     logging.info("Bad File: " + bad_filename)
                     logging.info("Found Text: '%s'" % invoice_number)
                     shutil.move(PDF_file, bad_filename)
@@ -261,7 +265,6 @@ def process_files():
         else:
             logging.error('Unrecognized Prefix')
             sys.exit(0)
-
 
 
 if __name__ == '__main__':
